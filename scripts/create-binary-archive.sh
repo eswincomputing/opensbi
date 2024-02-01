@@ -104,6 +104,7 @@ build_opensbi() {
 		BUILD_PLATFORM_SUBDIR+=("fpga/ariane")
 		BUILD_PLATFORM_SUBDIR+=("fpga/openpiton")
 		BUILD_PLATFORM_SUBDIR+=("generic")
+		BUILD_PLATFORM_SUBDIR+=("eswin/eic770x")
 		;;
 	*)
 		echo "Invalid Build RISC-V XLEN"

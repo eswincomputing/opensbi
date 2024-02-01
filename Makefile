@@ -85,6 +85,11 @@ export KCONFIG_CONFIG=$(KCONFIG_DIR)/.config
 export OPENSBI_SRC_DIR=$(src_dir)
 export OPENSBI_PLATFORM=$(PLATFORM)
 export OPENSBI_PLATFORM_SRC_DIR=$(platform_src_dir)
+
+export chiplet=$(CHIPLET)
+export mem_mode=$(MEM_MODE)
+export chiplet_die_available=$(CHIPLET_DIE_AVAILABLE)
+export platform_cluster_x_core=$(PLATFORM_CLUSTER_X_CORE)
 endif
 
 # Find library version
@@ -231,6 +236,11 @@ include $(KCONFIG_CONFIG)
 include $(KCONFIG_AUTOCMD)
 endif
 
+# Include platform specifig config.mk
+ifdef PLATFORM
+include $(platform_src_dir)/config.mk
+endif
+
 # Include all objects.mk files
 ifdef PLATFORM
 include $(platform-object-mks)
@@ -331,7 +341,7 @@ GENFLAGS	+=	$(libsbiutils-genflags-y)
 GENFLAGS	+=	$(platform-genflags-y)
 GENFLAGS	+=	$(firmware-genflags-y)
 
-CFLAGS		=	-g -Wall -Werror -ffreestanding -nostdlib -fno-stack-protector -fno-strict-aliasing
+CFLAGS		=	-g -Wall -Werror -ffreestanding -nostdlib -fno-stack-protector -fno-strict-aliasing -D$(chiplet) -D$(mem_mode) -D$(chiplet_die_available) -D$(platform_cluster_x_core)
 ifneq ($(DEBUG),)
 CFLAGS		+=	-O0
 else
@@ -354,7 +364,7 @@ CPPFLAGS	+=	$(GENFLAGS)
 CPPFLAGS	+=	$(platform-cppflags-y)
 CPPFLAGS	+=	$(firmware-cppflags-y)
 
-ASFLAGS		=	-g -Wall -nostdlib
+ASFLAGS		=	-g -Wall -nostdlib -D$(chiplet) -D$(mem_mode) -D$(chiplet_die_available) -D$(platform_cluster_x_core)
 ASFLAGS		+=	-fno-omit-frame-pointer -fno-optimize-sibling-calls -mstrict-align
 # enable -m(no-)save-restore option by CC_SUPPORT_SAVE_RESTORE
 ifeq ($(CC_SUPPORT_SAVE_RESTORE),y)
@@ -387,7 +397,7 @@ MERGEFLAGS	+=	-b elf$(PLATFORM_RISCV_XLEN)-littleriscv
 endif
 MERGEFLAGS	+=	-m elf$(PLATFORM_RISCV_XLEN)lriscv
 
-DTSCPPFLAGS	=	$(CPPFLAGS) -nostdinc -nostdlib -fno-builtin -D__DTS__ -x assembler-with-cpp
+DTSCPPFLAGS	=	$(CPPFLAGS) -nostdinc -nostdlib -fno-builtin -D__DTS__ -x assembler-with-cpp -D$(chiplet) -D$(mem_mode) -D$(chiplet_die_available) -D$(platform_cluster_x_core)
 
 # Setup functions for compilation
 define dynamic_flags
