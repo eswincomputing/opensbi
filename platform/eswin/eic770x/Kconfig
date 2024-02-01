@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: BSD-2-Clause
+
+config PLATFORM_ESWIN_EIC770X
+	bool
+	select FDT
+	select IPI_MSWI
+	select IRQCHIP_PLIC
+	select SERIAL_UART8250
+	select TIMER_MTIMER
+	select FDT_PMU
+	default y
