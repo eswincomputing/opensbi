@@ -341,7 +341,7 @@ GENFLAGS	+=	$(libsbiutils-genflags-y)
 GENFLAGS	+=	$(platform-genflags-y)
 GENFLAGS	+=	$(firmware-genflags-y)
 
-CFLAGS		=	-g -Wall -Werror -ffreestanding -nostdlib -fno-stack-protector -fno-strict-aliasing -D$(chiplet) -D$(mem_mode) -D$(chiplet_die_available) -D$(platform_cluster_x_core)
+CFLAGS		=	-g -Wall -Werror -ffreestanding -nostdlib -fno-stack-protector -fno-strict-aliasing -O2 -D$(chiplet) -D$(mem_mode) -D$(chiplet_die_available) -D$(platform_cluster_x_core)
 ifneq ($(DEBUG),)
 CFLAGS		+=	-O0
 else
@@ -480,6 +480,7 @@ compile_gen_dep = $(CMD_PREFIX)mkdir -p `dirname $(1)`; \
 	     echo "$(1:.dep=$(2)): $(3)" >> $(1)
 
 targets-y  = $(build_dir)/lib/libsbi.a
+targets-y  += $(build_dir)/lib/libsbiutils.a
 ifdef PLATFORM
 targets-y += $(platform_build_dir)/lib/libplatsbi.a
 endif
@@ -494,6 +495,9 @@ all: $(targets-y)
 
 # Rules for lib/sbi sources
 $(build_dir)/lib/libsbi.a: $(libsbi-objs-path-y)
+	$(call compile_ar,$@,$^)
+
+$(build_dir)/lib/libsbiutils.a: $(libsbi-objs-path-y) $(libsbiutils-objs-path-y)
 	$(call compile_ar,$@,$^)
 
 $(platform_build_dir)/lib/libplatsbi.a: $(libsbi-objs-path-y) $(libsbiutils-objs-path-y) $(platform-objs-path-y)

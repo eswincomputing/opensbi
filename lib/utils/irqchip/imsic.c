@@ -369,7 +369,7 @@ int imsic_cold_irqchip_init(struct imsic_data *imsic)
 					  (SBI_DOMAIN_MEMREGION_MMIO |
 					   SBI_DOMAIN_MEMREGION_M_READABLE |
 					   SBI_DOMAIN_MEMREGION_M_WRITABLE),
-					  &reg);
+					  &reg, 0);
 		rc = sbi_domain_root_add_memregion(&reg);
 		if (rc)
 			return rc;

@@ -24,16 +24,28 @@
 
 static u32 plic_get_priority(const struct plic_data *plic, u32 source)
 {
+#if ((defined BR2_CHIPLET_2) || ((defined BR2_CHIPLET_1) && (defined BR2_CHIPLET_1_DIE0_AVAILABLE)))
 	volatile void *plic_priority = (char *)plic->addr +
 			PLIC_PRIORITY_BASE + 4 * source;
+#elif ((defined BR2_CHIPLET_2) || ((defined BR2_CHIPLET_1) && (defined BR2_CHIPLET_1_DIE1_AVAILABLE)))
+	volatile void *plic_priority = (char *)(plic->addr + 0x20000000) +
+			PLIC_PRIORITY_BASE + 4 * source;
+#endif
 	return readl(plic_priority);
 }
 
 static void plic_set_priority(const struct plic_data *plic, u32 source, u32 val)
 {
+#if ((defined BR2_CHIPLET_2) || ((defined BR2_CHIPLET_1) && (defined BR2_CHIPLET_1_DIE0_AVAILABLE)))
 	volatile void *plic_priority = (char *)plic->addr +
 			PLIC_PRIORITY_BASE + 4 * source;
 	writel(val, plic_priority);
+#endif
+#if ((defined BR2_CHIPLET_2) || ((defined BR2_CHIPLET_1) && (defined BR2_CHIPLET_1_DIE1_AVAILABLE)))
+	volatile void *plic_priority_1 = (char *)(plic->addr + 0x20000000) +
+			PLIC_PRIORITY_BASE + 4 * source;
+	writel(val, plic_priority_1);
+#endif
 }
 
 void plic_priority_save(const struct plic_data *plic, u8 *priority, u32 num)
@@ -53,8 +65,14 @@ static u32 plic_get_thresh(const struct plic_data *plic, u32 cntxid)
 {
 	volatile void *plic_thresh;
 
-	plic_thresh = (char *)plic->addr +
-		      PLIC_CONTEXT_BASE + PLIC_CONTEXT_STRIDE * cntxid;
+	if (0 == (cntxid / 8)) { // die 0
+		plic_thresh = (char *)plic->addr +
+			      PLIC_CONTEXT_BASE + PLIC_CONTEXT_STRIDE * cntxid;
+	}
+	else { // die 1
+		plic_thresh = (char *)(plic->addr + 0x20000000) +
+			      PLIC_CONTEXT_BASE + PLIC_CONTEXT_STRIDE * (cntxid % 8);
+	}
 
 	return readl(plic_thresh);
 }
@@ -63,9 +81,16 @@ static void plic_set_thresh(const struct plic_data *plic, u32 cntxid, u32 val)
 {
 	volatile void *plic_thresh;
 
-	plic_thresh = (char *)plic->addr +
-		      PLIC_CONTEXT_BASE + PLIC_CONTEXT_STRIDE * cntxid;
-	writel(val, plic_thresh);
+	if (0 == (cntxid / 8)) { // die 0
+		plic_thresh = (char *)plic->addr +
+			      PLIC_CONTEXT_BASE + PLIC_CONTEXT_STRIDE * cntxid;
+		writel(val, plic_thresh);
+	}
+	else { // die 1
+		volatile void *plic_thresh_1 = (void *)(plic->addr + 0x20000000 ) +
+			PLIC_CONTEXT_BASE + PLIC_CONTEXT_STRIDE * (cntxid % 8);
+		writel(val, plic_thresh_1);
+	}
 }
 
 static u32 plic_get_ie(const struct plic_data *plic, u32 cntxid,
@@ -73,9 +98,16 @@ static u32 plic_get_ie(const struct plic_data *plic, u32 cntxid,
 {
 	volatile void *plic_ie;
 
-	plic_ie = (char *)plic->addr +
-		   PLIC_ENABLE_BASE + PLIC_ENABLE_STRIDE * cntxid +
-		   4 * word_index;
+	if (0 == (cntxid / 8)) { // die 0
+		plic_ie = (char *)plic->addr +
+			   PLIC_ENABLE_BASE + PLIC_ENABLE_STRIDE * cntxid +
+			   4 * word_index;
+	}
+	else { // die 1
+		plic_ie = (char *)( plic->addr + 0x20000000 ) +
+			   PLIC_ENABLE_BASE + PLIC_ENABLE_STRIDE * (cntxid % 8) +
+			   4 * word_index;
+	}
 
 	return readl(plic_ie);
 }
@@ -85,10 +117,18 @@ static void plic_set_ie(const struct plic_data *plic, u32 cntxid,
 {
 	volatile void *plic_ie;
 
-	plic_ie = (char *)plic->addr +
-		   PLIC_ENABLE_BASE + PLIC_ENABLE_STRIDE * cntxid +
-		   4 * word_index;
-	writel(val, plic_ie);
+	if (0 == (cntxid / 8)) { // die 0
+		plic_ie = (char *)plic->addr +
+			   PLIC_ENABLE_BASE + PLIC_ENABLE_STRIDE * cntxid +
+			   4 * word_index;
+		writel(val, plic_ie);
+	}
+	else { // die 1
+		volatile void *plic_ie_1 = (char *)( plic->addr + 0x20000000 ) +
+			PLIC_ENABLE_BASE + PLIC_ENABLE_STRIDE * (cntxid % 8) +
+			4 * word_index;
+		writel(val, plic_ie_1);
+	}
 }
 
 void plic_context_save(const struct plic_data *plic, int context_id,
