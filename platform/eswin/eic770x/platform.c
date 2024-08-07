@@ -1,23 +1,14 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
- * SPDX-License-Identifier: BSD-2-Clause
  *
- ****************************************************************
+ * Copyright 2024 Beijing ESWIN Computing Technology Co., Ltd.
  *
- *  Copyright (C) 2022  Beiing Eswin Co. Ltd
+ * Authors:
+ *   XuXiang <xuxiang@eswincomputing.com>
+ *   LinMin <linmin@eswincomputing.com>
+ *   NingYu <ningyu@eswincomputing.com>
+ *   HuangYifeng <huangyifeng@eswincomputing.com>
  *
- *    This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License Version 2
- *  as published by the Free Software Foundation.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- *
- *  You should have received a copy of the GNU General Public License Version 2
- *  along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
- *
- ****************************************************************
  */
 
 #include <libfdt.h>
@@ -26,6 +17,7 @@
 #include <sbi/sbi_console.h>
 #include <sbi/sbi_platform.h>
 #include <sbi/sbi_system.h>
+#include <sbi/sbi_timer.h>
 #include <sbi/riscv_io.h>
 #include <sbi_utils/irqchip/plic.h>
 #include <sbi_utils/serial/uart8250.h>
@@ -35,6 +27,8 @@
 #include <sbi_utils/fdt/fdt_helper.h>
 #include <sbi/riscv_asm.h>
 #include <sbi_utils/fdt/fdt_fixup.h>
+#include <sbi/sbi_hart.h>
+#include "eic770x_uart.h"
 
 /* clang-format off */
 #ifdef BR2_CHIPLET_1
@@ -56,10 +50,13 @@
 //#define EIC770X_ACLINT_MTIMER_FREQ			2000000
 
 #define EIC770X_PLIC_ADDR				0xc000000
-#define EIC770X_PLIC_NUM_SOURCES			520
+#define EIC770X_PLIC_NUM_SOURCES		520
 #define EIC770X_PLIC_NUM_PRIORITIES		7
 
 #define EIC770X_UART0_ADDR				(0x50900000UL + DIE_REG_OFFSET)
+#define EIC770X_UART2_ADDR				(0x50920000UL + DIE_REG_OFFSET)
+#define EIC770X_UART_RESET_ADDR			(0x51828434UL + DIE_REG_OFFSET)
+
 #define EIC770X_UART_BAUDRATE			115200
 
 #define EIC770X_UART_CLK       (200000000UL)
@@ -162,14 +159,70 @@ static void eic770x_modify_dt(void *fdt)
 }
 static int eic770x_system_reset_check(u32 type, u32 reason)
 {
-	return 1;
+	switch (type) {
+	case SBI_SRST_RESET_TYPE_SHUTDOWN:
+	case SBI_SRST_RESET_TYPE_COLD_REBOOT:
+	case SBI_SRST_RESET_TYPE_WARM_REBOOT:
+		return 1;
+	}
+
+	return 0;
+}
+
+/* tell stm32 on the carrier to shut down the power */
+static int eic770x_core_shutdown(void)
+{
+	Message shutdown_reply = {
+		.header = FRAME_HEADER,
+		.msg_type = MSG_NOTIFLY,
+		.cmd_type = CMD_POWER_OFF,
+		.data_len = 0x0,
+		.tail = FRAME_TAIL,
+	};
+	sbi_printf("%s\n", __func__);
+	transmit_message(&shutdown_reply);
+	return 0;
+}
+
+static int eic770x_cold_reset(void)
+{
+	Message shutdown_reply = {
+		.header = FRAME_HEADER,
+		.msg_type = MSG_NOTIFLY,
+		.cmd_type = CMD_RESTART,
+		.data_len = 0x0,
+		.tail = FRAME_TAIL,
+	};
+	sbi_printf("%s\n", __func__);
+	transmit_message(&shutdown_reply);
+	sbi_timer_mdelay(3000);
+	/*When it is not a DVB board, reboot can still be done, but there is no real power off/power on action at that time.*/
+	writel(EIC770X_SYS_RESET_VALUE, (volatile void *)EIC770X_SYS_RESET_ADDR);
+	return 0;
+}
+
+static int eic770x_core_reset(void)
+{
+	sbi_printf("%s\n", __func__);
+	writel(EIC770X_SYS_RESET_VALUE, (volatile void *)EIC770X_SYS_RESET_ADDR);
+	return 0;
 }
 
 static void eic770x_system_reset(u32 type, u32 reason)
 {
-	writel(EIC770X_SYS_RESET_VALUE, (volatile void *)EIC770X_SYS_RESET_ADDR);
+	switch (type) {
+	case SBI_SRST_RESET_TYPE_SHUTDOWN:
+		eic770x_core_shutdown();
+		break;
+	case SBI_SRST_RESET_TYPE_COLD_REBOOT:
+		eic770x_cold_reset();
+		break;
+	case SBI_SRST_RESET_TYPE_WARM_REBOOT:
+		eic770x_core_reset();
+		break;
+	}
 
-	while (1);
+	sbi_hart_hang();
 }
 
 static struct sbi_system_reset_device eic770x_reset = {
@@ -177,6 +230,20 @@ static struct sbi_system_reset_device eic770x_reset = {
 	.system_reset_check = eic770x_system_reset_check,
 	.system_reset = eic770x_system_reset
 };
+
+/* UART2 is used for communication with stm32 on the carrier board of DVB */
+int eic770x_uart2_init()
+{
+	/*reset uart2*/
+	writeb(0x1B, (volatile void *)EIC770X_UART_RESET_ADDR);
+	writeb(0x1F, (volatile void *)EIC770X_UART_RESET_ADDR);
+	return eic770x_uart8250_init(EIC770X_UART2_ADDR,
+					 EIC770X_UART_CLK,
+					 EIC770X_UART_BAUDRATE,
+					 0x2,
+					 0x2);
+
+}
 
 static int eic770x_nascent_init(void)
 {

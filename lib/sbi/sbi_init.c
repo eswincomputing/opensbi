@@ -11,6 +11,7 @@
 #include <sbi/riscv_atomic.h>
 #include <sbi/riscv_barrier.h>
 #include <sbi/riscv_locks.h>
+#include <sbi/riscv_io.h>
 #include <sbi/sbi_console.h>
 #include <sbi/sbi_cppc.h>
 #include <sbi/sbi_domain.h>
@@ -267,6 +268,21 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 	unsigned long *count;
 	const struct sbi_platform *plat = sbi_platform_ptr(scratch);
 
+#ifdef BR2_CHIPLET_2
+	unsigned long fw_text_start_addr;
+
+	// set die1 u84 boot addr
+	fw_text_start_addr = FW_TEXT_START;
+	writel(fw_text_start_addr>>32, (void *)(0x71828000UL + 0x31c));
+	writel(fw_text_start_addr&0xfffffffful, (void *)(0x71828000UL + 0x320));
+	writel(fw_text_start_addr>>32, (void *)(0x71828000UL + 0x324));
+	writel(fw_text_start_addr&0xfffffffful, (void *)(0x71828000UL + 0x328));
+	writel(fw_text_start_addr>>32, (void *)(0x71828000UL + 0x32c));
+	writel(fw_text_start_addr&0xfffffffful, (void *)(0x71828000UL + 0x330));
+	writel(fw_text_start_addr>>32, (void *)(0x71828000UL + 0x334));
+	writel(fw_text_start_addr&0xfffffffful, (void *)(0x71828000UL + 0x338));
+	writel(0xfffffffful, (void *)(0x71828000UL + 0x44c));  //release die1 u84
+#endif
 	/* Note: This has to be first thing in coldboot init sequence */
 	rc = sbi_scratch_init(scratch);
 	if (rc)
@@ -515,6 +531,7 @@ void __noreturn sbi_init(struct sbi_scratch *scratch)
 	bool coldboot			= false;
 	u32 hartid			= current_hartid();
 	const struct sbi_platform *plat = sbi_platform_ptr(scratch);
+	unsigned long hwpf;	// Hardware Prefetcher 0 : 0x104095C1BE241 | Hardware Prefetcher 1 : 0x38c84e
 
 	if ((SBI_HARTMASK_MAX_BITS <= hartid) ||
 	    sbi_platform_hart_invalid(plat, hartid))
@@ -559,6 +576,19 @@ void __noreturn sbi_init(struct sbi_scratch *scratch)
 	 */
 	if (sbi_platform_nascent_init(plat))
 		sbi_hart_hang();
+
+	hwpf = 0x104095C1BE241UL;
+	__asm__ volatile("csrw 0x7c3 , %0" : : "r"(hwpf));
+	hwpf = 0x929FUL;
+
+	//cleanup fields
+        hwpf &= (~(0x1f << 5)); //[9:5]  cleanup  hitCacheThrdL2
+        hwpf &= (~(0x7  << 14)); //[16:14] cleanup numL2PFIssQEnt
+
+	//set new value
+        hwpf |= (0x1f << 5); //[9:5]    hitCacheThrdL2
+        hwpf |= (0x7  << 14); //[16:14] numL2PFIssQEnt
+	__asm__ volatile("csrw 0x7c4 , %0" : : "r"(hwpf));
 
 	if (coldboot)
 		init_coldboot(scratch, hartid);

@@ -40,8 +40,28 @@ static void mswi_ipi_send(u32 target_hart)
 		return;
 
 	/* Set ACLINT IPI */
-	msip = (void *)mswi->addr;
-	writel(1, &msip[target_hart - mswi->first_hartid]);
+#if defined(BR2_CLUSTER_1_CORE) && defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
+	if(target_hart >= 1  )
+	{
+		msip = (void *)mswi->addr + 0x20000000;
+		writel(1, &msip[(target_hart-1) - mswi->first_hartid]);
+	// sbi_printf("mswi_ipi_send:msip[%d -%d] %lx\n",target_hart, mswi->first_hartid,(unsigned long)&msip[(target_hart-4) - mswi->first_hartid]);
+	}
+#else
+	if(target_hart >= 4  )
+	{
+		msip = (void *)mswi->addr + 0x20000000;
+		writel(1, &msip[(target_hart-4) - mswi->first_hartid]);
+	// sbi_printf("mswi_ipi_send:msip[%d -%d] %lx\n",target_hart, mswi->first_hartid,(unsigned long)&msip[(target_hart-4) - mswi->first_hartid]);
+	}
+#endif
+	else
+	{
+		msip = (void *)mswi->addr;
+		writel(1, &msip[target_hart - mswi->first_hartid]);
+		// sbi_printf("mswi_ipi_send:msip[%d -%d] %lx\n",target_hart, mswi->first_hartid,(unsigned long)&msip[target_hart - mswi->first_hartid]);
+	}
+	// sbi_printf("exit mswi_ipi_send\n");
 }
 
 static void mswi_ipi_clear(u32 target_hart)
@@ -59,8 +79,27 @@ static void mswi_ipi_clear(u32 target_hart)
 		return;
 
 	/* Clear ACLINT IPI */
-	msip = (void *)mswi->addr;
-	writel(0, &msip[target_hart - mswi->first_hartid]);
+#if defined(BR2_CLUSTER_1_CORE) && defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
+	if(target_hart >= 1  )
+	{
+		msip = (void *)mswi->addr + 0x20000000;
+		writel(0, &msip[(target_hart-1) - mswi->first_hartid]);
+		// sbi_printf("mswi_ipi_clear:msip[%d -%d] %lx\n",target_hart, mswi->first_hartid,(unsigned long)&msip[(target_hart-4) - mswi->first_hartid]);
+	}
+#else
+	if(target_hart >= 4  )
+	{
+		msip = (void *)mswi->addr + 0x20000000;
+		writel(0, &msip[(target_hart-4) - mswi->first_hartid]);
+		// sbi_printf("mswi_ipi_clear:msip[%d -%d] %lx\n",target_hart, mswi->first_hartid,(unsigned long)&msip[(target_hart-4) - mswi->first_hartid]);
+	}
+#endif
+	else
+	{
+		msip = (void *)mswi->addr;
+		writel(0, &msip[target_hart - mswi->first_hartid]);
+		// sbi_printf("mswi_ipi_clear:msip[%d -%d] %lx\n",target_hart, mswi->first_hartid,(unsigned long)&msip[target_hart - mswi->first_hartid]);
+	}
 }
 
 static struct sbi_ipi_device aclint_mswi = {
@@ -80,10 +119,12 @@ int aclint_mswi_warm_init(void)
 int aclint_mswi_cold_init(struct aclint_mswi_data *mswi)
 {
 	u32 i;
-	int rc;
 	struct sbi_scratch *scratch;
+#ifndef HOLE_REGION
+	int rc;
 	unsigned long pos, region_size;
 	struct sbi_domain_memregion reg;
+#endif
 
 	/* Sanity checks */
 	if (!mswi || (mswi->addr & (ACLINT_MSWI_ALIGN - 1)) ||
@@ -111,6 +152,7 @@ int aclint_mswi_cold_init(struct aclint_mswi_data *mswi)
 		mswi_set_hart_data_ptr(scratch, mswi);
 	}
 
+#ifndef HOLE_REGION
 	/* Add MSWI regions to the root domain */
 	for (pos = 0; pos < mswi->size; pos += ACLINT_MSWI_ALIGN) {
 		region_size = ((mswi->size - pos) < ACLINT_MSWI_ALIGN) ?
@@ -119,12 +161,12 @@ int aclint_mswi_cold_init(struct aclint_mswi_data *mswi)
 					  (SBI_DOMAIN_MEMREGION_MMIO |
 					   SBI_DOMAIN_MEMREGION_M_READABLE |
 					   SBI_DOMAIN_MEMREGION_M_WRITABLE),
-					  &reg);
+					  &reg, 0);
 		rc = sbi_domain_root_add_memregion(&reg);
 		if (rc)
 			return rc;
 	}
-
+#endif
 	sbi_ipi_set_device(&aclint_mswi);
 
 	return 0;
