@@ -19,6 +19,7 @@
 #include <sbi/sbi_system.h>
 #include <sbi/sbi_timer.h>
 #include <sbi/riscv_io.h>
+#include <sbi_utils/fdt/fdt_domain.h>
 #include <sbi_utils/irqchip/plic.h>
 #include <sbi_utils/serial/uart8250.h>
 #include <sbi_utils/timer/aclint_mtimer.h>
@@ -361,6 +362,30 @@ static uint64_t generic_pmu_xlate_to_mhpmevent(uint32_t event_idx,
 	return evt_val;
 }
 
+static int eic770x_domains_init(void)
+{
+	void *fdt = fdt_get_address();
+	int offset, ret;
+
+	ret = fdt_domains_populate(fdt);
+	if (ret < 0)
+		return ret;
+
+	offset = fdt_path_offset(fdt, "/chosen");
+
+	if (offset >= 0) {
+		offset = fdt_node_offset_by_compatible(fdt, offset,
+						       "opensbi,domain,config");
+
+		if (offset >= 0 &&
+		    fdt_get_property(fdt, offset, "system-suspend-test", NULL))
+		        sbi_printf("%s %d\n", __func__,__LINE__);
+				sbi_system_suspend_test_enable();
+	}
+
+	return 0;
+}
+
 const struct sbi_platform_operations platform_ops = {
 	.nascent_init		= eic770x_nascent_init,
 	.early_init		= eic770x_early_init,
@@ -372,6 +397,7 @@ const struct sbi_platform_operations platform_ops = {
 	.timer_init		= eic770x_timer_init,
 	.pmu_init		= generic_pmu_init,
 	.pmu_xlate_to_mhpmevent = generic_pmu_xlate_to_mhpmevent,
+	.domains_init		= eic770x_domains_init,
 };
 
 const struct sbi_platform platform = {
