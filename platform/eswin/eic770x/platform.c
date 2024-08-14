@@ -19,7 +19,6 @@
 #include <sbi/sbi_system.h>
 #include <sbi/sbi_timer.h>
 #include <sbi/riscv_io.h>
-#include <sbi_utils/fdt/fdt_domain.h>
 #include <sbi_utils/irqchip/plic.h>
 #include <sbi_utils/serial/uart8250.h>
 #include <sbi_utils/timer/aclint_mtimer.h>
@@ -258,10 +257,45 @@ static int eic770x_nascent_init(void)
 	return 0;
 }
 
+static int eic770x_system_suspend_check(u32 sleep_type)
+{
+	return sleep_type == SBI_SUSP_SLEEP_TYPE_SUSPEND ? 0 : SBI_EINVAL;
+}
+
+static int eic770x_system_suspend(u32 sleep_type,
+				unsigned long mmode_resume_addr)
+{
+	if (sleep_type != SBI_SUSP_SLEEP_TYPE_SUSPEND)
+		return SBI_EINVAL;
+
+	csr_clear(CSR_MIE, MIP_MTIP);
+	csr_clear(CSR_MIE, MIP_STIP);
+
+	asm volatile("fence.i" ::: "memory");
+	asm volatile("fence rw,rw\n\t");
+
+	/* Wait for interrupt */
+	wfi();
+
+	csr_set(CSR_MIE, MIP_STIP);
+	csr_set(CSR_MIE, MIP_MTIP);
+
+	sbi_printf("%s %d\n", __func__,__LINE__);
+	return SBI_OK;
+}
+
+static struct sbi_system_suspend_device eic770x_suspend_device = {
+	.name = "eswin_eic770x_suspend",
+	.system_suspend_check = eic770x_system_suspend_check,
+	.system_suspend = eic770x_system_suspend,
+};
+
 static int eic770x_early_init(bool cold_boot)
 {
-	if (cold_boot)
+	if (cold_boot) {
 		sbi_system_reset_add_device(&eic770x_reset);
+		sbi_system_suspend_set_device(&eic770x_suspend_device);
+	}
 
 	return 0;
 }
@@ -362,30 +396,6 @@ static uint64_t generic_pmu_xlate_to_mhpmevent(uint32_t event_idx,
 	return evt_val;
 }
 
-static int eic770x_domains_init(void)
-{
-	void *fdt = fdt_get_address();
-	int offset, ret;
-
-	ret = fdt_domains_populate(fdt);
-	if (ret < 0)
-		return ret;
-
-	offset = fdt_path_offset(fdt, "/chosen");
-
-	if (offset >= 0) {
-		offset = fdt_node_offset_by_compatible(fdt, offset,
-						       "opensbi,domain,config");
-
-		if (offset >= 0 &&
-		    fdt_get_property(fdt, offset, "system-suspend-test", NULL))
-		        sbi_printf("%s %d\n", __func__,__LINE__);
-				sbi_system_suspend_test_enable();
-	}
-
-	return 0;
-}
-
 const struct sbi_platform_operations platform_ops = {
 	.nascent_init		= eic770x_nascent_init,
 	.early_init		= eic770x_early_init,
@@ -397,7 +407,6 @@ const struct sbi_platform_operations platform_ops = {
 	.timer_init		= eic770x_timer_init,
 	.pmu_init		= generic_pmu_init,
 	.pmu_xlate_to_mhpmevent = generic_pmu_xlate_to_mhpmevent,
-	.domains_init		= eic770x_domains_init,
 };
 
 const struct sbi_platform platform = {
