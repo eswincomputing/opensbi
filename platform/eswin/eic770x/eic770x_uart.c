@@ -148,12 +148,13 @@ static void generate_checksum(Message *msg)
 }
 
 int eic770x_uart2_init();
+int eic770x_uart2_suspend();
 int transmit_message(Message *msg)
 {
 	eic770x_uart2_init();
 	generate_checksum(msg);
 
 	eic770x_uart_snd((char *)msg, sizeof(Message));
-
+	eic770x_uart2_suspend();
 	return 0;
 }
