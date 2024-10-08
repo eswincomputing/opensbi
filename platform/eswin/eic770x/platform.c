@@ -56,6 +56,7 @@
 #define EIC770X_UART0_ADDR				(0x50900000UL + DIE_REG_OFFSET)
 #define EIC770X_UART2_ADDR				(0x50920000UL + DIE_REG_OFFSET)
 #define EIC770X_UART_RESET_ADDR			(0x51828434UL + DIE_REG_OFFSET)
+#define EIC770X_UART_LSPCLK_ADDR		(0x51828200UL + DIE_REG_OFFSET)
 
 #define EIC770X_UART_BAUDRATE			115200
 
@@ -234,9 +235,18 @@ static struct sbi_system_reset_device eic770x_reset = {
 /* UART2 is used for communication with stm32 on the carrier board of DVB */
 int eic770x_uart2_init()
 {
+	/*enable uart2 pclk*/
+	u32 value = readl((volatile void *)EIC770X_UART_LSPCLK_ADDR);
+	value |= 0x1u << 19;
+	writel(value, (volatile void *)EIC770X_UART_LSPCLK_ADDR);
+
 	/*reset uart2*/
-	writeb(0x1B, (volatile void *)EIC770X_UART_RESET_ADDR);
-	writeb(0x1F, (volatile void *)EIC770X_UART_RESET_ADDR);
+	value = readl((volatile void *)EIC770X_UART_RESET_ADDR);
+	value &= ~(0x1u << 2);
+	writel(value, (volatile void *)EIC770X_UART_RESET_ADDR);
+	value |= 0x1u << 2;
+	writel(value, (volatile void *)EIC770X_UART_RESET_ADDR);
+
 	return eic770x_uart8250_init(EIC770X_UART2_ADDR,
 					 EIC770X_UART_CLK,
 					 EIC770X_UART_BAUDRATE,
@@ -244,7 +254,14 @@ int eic770x_uart2_init()
 					 0x2);
 
 }
-
+int eic770x_uart2_suspend()
+{
+	/*disable uart2 pclk*/
+	u32 value = readl((volatile void *)EIC770X_UART_LSPCLK_ADDR);
+	value &= ~(0x1u << 19);
+	writel(value, (volatile void *)EIC770X_UART_LSPCLK_ADDR);
+	return 0;
+}
 static int eic770x_nascent_init(void)
 {
 	unsigned long hwpf;	// Hardware Prefetcher 0 : 0x104095C1BE241 | Hardware Prefetcher 1 : 0x38c84e
