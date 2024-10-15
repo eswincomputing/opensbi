@@ -17,6 +17,9 @@
 #include <sbi/sbi_ipi.h>
 #include <sbi/sbi_timer.h>
 #include <sbi_utils/timer/aclint_mtimer.h>
+#include <sbi/riscv_locks.h>
+
+static spinlock_t mtime_lock = SPIN_LOCK_INITIALIZER;
 
 static struct aclint_mtimer_data *mtimer_hartid2data[SBI_HARTMASK_MAX_BITS];
 
@@ -55,22 +58,32 @@ static u64 mtimer_value(void)
 {
 	u32 target_hart = current_hartid();
 	struct aclint_mtimer_data *mt = mtimer_hartid2data[target_hart];
-	u64 *time_val;
+	u64 d0, d1, val;
 
-#if defined(BR2_CLUSTER_1_CORE) && defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
-	if(target_hart >= 1  )
-#else
-	if(target_hart >= 4  )
-#endif
-	{
-		time_val = (void *)mt->mtime_addr + 0x20000000;
-	}
-	else
-	{
-		time_val = (void *)mt->mtime_addr;
-	}
+// SOC with single die mode
+#if !defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
 	/* Read MTIMER Time Value */
-	return mt->time_rd(time_val);
+	return mt->time_rd((u64 *)((void *)mt->mtime_addr));
+#elif defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
+	return mt->time_rd((u64 *)((void *)mt->mtime_addr + 0x20000000));
+#endif
+
+// SOC with dual dies mode
+// sync with bigger value of mtime
+	spin_lock(&mtime_lock);
+	d0 = mt->time_rd((u64 *)((void *)mt->mtime_addr));
+	d1 = mt->time_rd((u64 *)((void *)mt->mtime_addr + 0x20000000));
+	if (d0 > d1) {
+		mt->time_wr(false, d0, (u64 *)((void *)mt->mtime_addr + 0x20000000));
+		val = d0;
+	} else if (d0 < d1) {
+		mt->time_wr(false, d1, (u64 *)((void *)mt->mtime_addr));
+		val = d1;
+	} else {
+		val = d0;
+	}
+	spin_unlock(&mtime_lock);
+	return val;
 }
 
 static void mtimer_event_stop(void)

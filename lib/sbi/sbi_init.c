@@ -249,6 +249,16 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 	writel(fw_text_start_addr>>32, (void *)(0x71828000UL + 0x334));
 	writel(fw_text_start_addr&0xfffffffful, (void *)(0x71828000UL + 0x338));
 	writel(0xfffffffful, (void *)(0x71828000UL + 0x44c));  //release die1 u84
+
+	// sync mtime between die0 and die1
+	asm volatile("nop");
+	asm volatile("nop");
+	asm volatile("nop");
+	asm volatile("nop");
+	asm volatile("nop");
+	asm volatile("nop");
+	writel(0,(void *)(0x2000000 + 0xbff8));
+	writel(0,(void *)(0x2000000 + 0x20000000 + 0xbff8));
 #endif
 	/* Note: This has to be first thing in coldboot init sequence */
 	rc = sbi_scratch_init(scratch);
