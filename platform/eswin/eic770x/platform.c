@@ -92,7 +92,7 @@ static struct aclint_mtimer_data mtimer = {
 	.mtimecmp_size = ACLINT_DEFAULT_MTIMECMP_SIZE,
         .first_hartid = 0,
 	.hart_count = EIC770X_HART_COUNT,
-	.has_64bit_mmio = FALSE,
+	.has_64bit_mmio = TRUE,
 };
 
 #ifdef BR2_CHIPLET_1
