@@ -45,8 +45,8 @@ static void sbi_boot_print_banner(struct sbi_scratch *scratch)
 #ifdef OPENSBI_VERSION_GIT
 	sbi_printf("\nOpenSBI %s\n", OPENSBI_VERSION_GIT);
 #else
-	sbi_printf("\nOpenSBI v%d.%d\n", OPENSBI_VERSION_MAJOR,
-		   OPENSBI_VERSION_MINOR);
+	sbi_printf("\nOpenSBI v%d.%d (%s)\n", OPENSBI_VERSION_MAJOR,
+		   OPENSBI_VERSION_MINOR, OPENSBI_VERSION_CUSTOM);
 #endif
 
 #ifdef OPENSBI_BUILD_TIME_STAMP
