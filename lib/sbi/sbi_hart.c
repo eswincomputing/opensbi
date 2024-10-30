@@ -336,10 +336,17 @@ static void init_fcsr(void)
 	hwpf = 0x80UL;	// [7]	Force Noisy Evict to send release message from any valid coherence permission state
 	__asm__ volatile("csrw 0x7c2 , %0" : : "r"(hwpf));
 
-	hwpf = 0x5c1be649UL;
+	hwpf = 0x104095C1BE241UL;
 	__asm__ volatile("csrw 0x7c3 , %0" : : "r"(hwpf));
 
 	hwpf = 0x929FUL;
+	//cleanup fields
+	hwpf &= (~(0x1f << 5)); //[9:5]  cleanup  hitCacheThrdL2
+	hwpf &= (~(0x7  << 14)); //[16:14] cleanup numL2PFIssQEnt
+
+	//set new value
+	hwpf |= (0x1f << 5); //[9:5]    hitCacheThrdL2
+	hwpf |= (0x7  << 14); //[16:14] numL2PFIssQEnt
 	__asm__ volatile("csrw 0x7c4 , %0" : : "r"(hwpf));
 
 }
