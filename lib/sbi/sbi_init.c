@@ -37,6 +37,15 @@
 	"        | |\n"                                     \
 	"        |_|\n\n"
 
+static void sbi_boot_print_hardware_feature(void)
+{
+	sbi_printf("\n");
+	sbi_printf("Hardware Feature[7C1]: 0x%lx\n",csr_read(0x7c1));
+	sbi_printf("Hardware Feature[7C2]: 0x%lx\n",csr_read(0x7c2));
+	sbi_printf("Hardware Feature[7C3]: 0x%lx\n",csr_read(0x7c3));
+	sbi_printf("Hardware Feature[7C4]: 0x%lx\n",csr_read(0x7c4));
+}
+
 static void sbi_boot_print_banner(struct sbi_scratch *scratch)
 {
 	if (scratch->options & SBI_SCRATCH_NO_BOOT_PRINTS)
@@ -355,6 +364,8 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 	sbi_boot_print_domains(scratch);
 
 	sbi_boot_print_hart(scratch, hartid);
+
+	sbi_boot_print_hardware_feature();
 
 	wake_coldboot_harts(scratch, hartid);
 

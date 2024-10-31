@@ -328,7 +328,7 @@ static void init_bus_blocker(void)
 static void init_fcsr(void)
 {
 	unsigned long hwpf;
-	
+
 	/* enable speculative icache refill */
 	hwpf = 0x4000UL;	// [14]	Disable Indirect-Jump Target Predictor
 	__asm__ volatile("csrw 0x7c1 , %0" : : "r"(hwpf));
