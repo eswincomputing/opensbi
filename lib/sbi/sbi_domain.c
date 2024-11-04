@@ -625,10 +625,23 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 	domain_memregion_inithole(&root_memregs[root_memregs_count++]);
 #endif
 
+#if defined(BR2_CHIPLET_2)
+	sbi_domain_memregion_init(0x2000000UL, 0x10000UL,
+				  SBI_DOMAIN_MEMREGION_MMIO,
+				  &root_memregs[root_memregs_count++],
+				  0);
+	sbi_domain_memregion_init(0x22000000UL, 0x10000UL,
+				SBI_DOMAIN_MEMREGION_MMIO,
+				&root_memregs[root_memregs_count++],
+				0);
+#endif
+
 /* default reserve llc region, enable from driver load  */
 /*
 	|-----------------------|---------------
 	|	memory zone 	| Start address 
+	|-----------------------|---------------
+	|	reserved		| 0x140_0000_0000
 	|-----------------------|---------------
 	|	system port 1	| 0x80_0000_0000
 	|-----------------------|---------------
@@ -665,7 +678,7 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 				  (SBI_DOMAIN_MEMREGION_READABLE |
 				   SBI_DOMAIN_MEMREGION_WRITEABLE |
 				   SBI_DOMAIN_MEMREGION_MMODE),
-				  &root_hole_region,0x1000000000UL);
+				  &root_hole_region,0x8000000000UL);
 	domain_memregion_inithole(&root_memregs[root_memregs_count++]);
 #elif defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
 	sbi_domain_memregion_init(0x80000000UL, 0x3fffffUL, SBI_DOMAIN_MEMREGION_MMODE,
@@ -675,19 +688,43 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 				  &root_hole_region,0x5000000000UL);
 	domain_memregion_inithole(&root_memregs[root_memregs_count++]);
 #elif defined(BR2_CHIPLET_2)
-	/* need 3 holes: die0 llc, die1 llc, interleave llc, change llc hole config to msip+mtimecompare+mtime when load npu driver */
-	// reserved + die0 llc
-	sbi_domain_memregion_init(0x1000000000UL, 0x3fffffUL, SBI_DOMAIN_MEMREGION_MMODE,
-				  &root_hole_region,0x1000000000UL);
+
+	#define D0_ECC_RESERVED_ALIGN_16G 0x400000000UL
+	#define D0_ECC_RESERVED_ALIGN_32G 0x780000000UL
+	#define D1_ECC_RESERVED_ALIGN_16G 0x2380000000UL
+	#define D1_ECC_RESERVED_ALIGN_32G 0x2700000000UL	
+	#define D0_NO_ECC_ALIGN			  0x1000000000UL
+	#define D1_NO_ECC_ALIGN			  0x3000000000UL
+	#define D0_NO_NEED_RESERVED_ALIGN 0x2000000000UL
+	#define D1_NO_NEED_RESERVED_ALIGN 0x14000000000UL
+
+	#undef ECC_MODE_ENABLE
+
+#ifdef ECC_MODE_ENABLE
+	#define D0_RESERVED_ALIGN	  D0_ECC_RESERVED_ALIGN_16G
+	#define D1_RESERVED_ALIGN	  D1_ECC_RESERVED_ALIGN_16G
+#else
+	#define D0_RESERVED_ALIGN	  D0_NO_ECC_ALIGN
+	#define D1_RESERVED_ALIGN	  D1_NO_ECC_ALIGN
+#endif
+
+	/* No access Die0 ECC(if needed) + reserved + LLC DIE0 */
+	sbi_domain_memregion_init(D0_RESERVED_ALIGN, 0x3fffffUL,
+				   SBI_DOMAIN_MEMREGION_MMODE,
+				  &root_hole_region,(D0_NO_NEED_RESERVED_ALIGN - D0_RESERVED_ALIGN));
 	domain_memregion_inithole(&root_memregs[root_memregs_count++]);
-	// reserved + die1 llc
-	sbi_domain_memregion_init(0x3000000000UL, 0x3fffffUL, SBI_DOMAIN_MEMREGION_MMODE,
-				  &root_hole_region,0x1000000000UL);
+
+	/* No execute permissions for system port region and interleaved llc.
+	   It is aimed to solve cache problem caused by the speculative icache refill.
+	*/
+	/* No execute Die1 ECC(if needed) + reserved + LLC DIE1 + Interleaved MEM/LLC + system port (PCIE 0/1 + Die0 MEM/LLC + Die1 MEM/LLC + interleaved MEM/LLC) */
+	sbi_domain_memregion_init(D1_RESERVED_ALIGN, 0x3fffffUL,
+				  (SBI_DOMAIN_MEMREGION_READABLE |
+				   SBI_DOMAIN_MEMREGION_WRITEABLE |
+				   SBI_DOMAIN_MEMREGION_MMODE),
+				  &root_hole_region,(D1_NO_NEED_RESERVED_ALIGN - D1_RESERVED_ALIGN));
 	domain_memregion_inithole(&root_memregs[root_memregs_count++]);
-	// reserved + interleave llc
-	sbi_domain_memregion_init(0x6000000000UL, 0x3fffffUL, SBI_DOMAIN_MEMREGION_MMODE,
-				  &root_hole_region,0x2000000000UL);
-	domain_memregion_inithole(&root_memregs[root_memregs_count++]);
+
 #endif
 #endif
 	/* Root domain allow everything memory region */
