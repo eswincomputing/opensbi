@@ -657,6 +657,16 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 	sbi_domain_memregion_init(0x1000000000UL, 0x3fffffUL, SBI_DOMAIN_MEMREGION_MMODE,
 				  &root_hole_region,0x7000000000UL);
 	domain_memregion_inithole(&root_memregs[root_memregs_count++]);
+
+	/* No execute permissions for system port region.
+	   It is aimed to solve cache problem caused by the speculative icache refill.
+	*/
+	sbi_domain_memregion_init(0xc000000000UL, 0x3fffffUL,
+				  (SBI_DOMAIN_MEMREGION_READABLE |
+				   SBI_DOMAIN_MEMREGION_WRITEABLE |
+				   SBI_DOMAIN_MEMREGION_MMODE),
+				  &root_hole_region,0x1000000000UL);
+	domain_memregion_inithole(&root_memregs[root_memregs_count++]);
 #elif defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
 	sbi_domain_memregion_init(0x80000000UL, 0x3fffffUL, SBI_DOMAIN_MEMREGION_MMODE,
 				  &root_hole_region,0x1f80000000UL);
