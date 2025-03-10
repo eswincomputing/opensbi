@@ -29,6 +29,10 @@ static bool domain_finalized = false;
 #define ROOT_REGION_MAX	16
 static u32 root_memregs_count = 0;
 
+#ifdef HOLE_REGION
+static struct sbi_domain_memregion root_hole_region;
+#endif
+
 struct sbi_domain root = {
 	.name = "root",
 	.possible_harts = NULL,
@@ -89,6 +93,16 @@ ulong sbi_domain_get_assigned_hartmask(const struct sbi_domain *dom,
 
 	return ret;
 }
+
+#ifdef HOLE_REGION
+static void __attribute__((unused)) domain_memregion_inithole(struct sbi_domain_memregion *reg)
+{
+	if (!reg)
+		return;
+
+	sbi_memcpy(reg, &root_hole_region, sizeof(*reg));
+}
+#endif
 
 void sbi_domain_memregion_init(unsigned long addr,
 				unsigned long size,
@@ -422,8 +436,12 @@ void sbi_domain_dump(const struct sbi_domain *dom, const char *suffix)
 	i = 0;
 	sbi_domain_for_each_memregion(dom, reg) {
 		rstart = reg->base;
-		rend = (reg->order < __riscv_xlen) ?
-			rstart + ((1UL << reg->order) - 1) : -1UL;
+		if (!reg->tor) {
+			rend = (reg->order < __riscv_xlen) ?
+				rstart + ((1UL << reg->order) - 1) : -1UL;
+		}else{
+			rend = rstart + reg->tor - 1;
+		}
 
 		sbi_printf("Domain%d Region%02d    %s: 0x%" PRILX "-0x%" PRILX " ",
 			   dom->index, i, suffix, rstart, rend);
@@ -793,7 +811,7 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 /* default reserve llc region, enable from driver load  */
 /*
 	|-----------------------|---------------
-	|	memory zone 	| Start address 
+	|	memory zone 	| Start address
 	|-----------------------|---------------
 	|	system port 1	| 0x80_0000_0000
 	|-----------------------|---------------
@@ -819,8 +837,30 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 
 #if defined(BR2_CHIPLET_1_DIE0_AVAILABLE) && defined(BR2_CHIPLET_1)
 	/* If enable DDR ECC, should reserve highest 2GB space for ecc within 16GB all size, start from 0x400000000UL */
-	sbi_domain_memregion_init(0x1000000000UL, 0x3fffffUL, 0,
-				  &root_memregs[root_memregs_count++],0x7000000000UL);
+	sbi_domain_memregion_init(0x0UL, 0x1000000000,
+				  (SBI_DOMAIN_MEMREGION_READABLE |
+				   SBI_DOMAIN_MEMREGION_WRITEABLE |
+				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
+				  &root_memregs[root_memregs_count++],
+				  0);
+
+	sbi_domain_memregion_init(0x60000000UL, 0x20000000UL,
+				  0,
+				  &root_memregs[root_memregs_count++],
+				  0);
+
+	sbi_domain_memregion_init(0x8000000000UL, 0x2000000000UL,
+				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE),
+				  &root_memregs[root_memregs_count++],
+				  0);
+
+	sbi_domain_memregion_init(0xc000000000UL, 0x1000000000UL,
+				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE),
+				  &root_memregs[root_memregs_count++],
+				  0);
+
 #elif defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
 	sbi_domain_memregion_init(0x80000000UL, 0x3fffffUL, 0,
 				  &root_memregs[root_memregs_count++],0x1f80000000UL);
@@ -840,11 +880,9 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 #endif
 #endif
 
-	/* Root domain allow everything memory region */
+	/* Root domain disable everything memory region */
 	sbi_domain_memregion_init(0, ~0UL,
-				  (SBI_DOMAIN_MEMREGION_READABLE |
-				   SBI_DOMAIN_MEMREGION_WRITEABLE |
-				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
+				  0,
 				  &root_memregs[root_memregs_count++],
 				  0);
 
