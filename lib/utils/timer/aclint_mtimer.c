@@ -16,8 +16,10 @@
 #include <sbi/sbi_scratch.h>
 #include <sbi/sbi_timer.h>
 #include <sbi_utils/timer/aclint_mtimer.h>
+#include <sbi/riscv_locks.h>
 
 static unsigned long mtimer_ptr_offset;
+static spinlock_t mtime_lock = SPIN_LOCK_INITIALIZER;
 
 #define mtimer_get_hart_data_ptr(__scratch)				\
 	sbi_scratch_read_type((__scratch), void *, mtimer_ptr_offset)
@@ -60,21 +62,36 @@ static u64 mtimer_value(void)
 {
 	struct sbi_scratch *scratch = sbi_scratch_thishart_ptr();
 	struct aclint_mtimer_data *mt;
-	u32 target_hart = current_hartid();
+	u64 d0, d1, val;
 
 	mt = mtimer_get_hart_data_ptr(scratch);
 	if (!mt)
 		return 0;
 
+// SOC with single die mode
+#if !defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
 	/* Read MTIMER Time Value */
-#if defined(BR2_CLUSTER_1_CORE) && defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
-	if(target_hart >= 1  )
-#else
-	if(target_hart >= 4  )
+	return mt->time_rd((u64 *)((void *)mt->mtime_addr));
+#elif defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
+	return mt->time_rd((u64 *)((void *)mt->mtime_addr + 0x20000000));
 #endif
-		return mt->time_rd((void *)mt->mtime_addr + 0x20000000);
-	else
-		return mt->time_rd((void *)mt->mtime_addr);
+
+// SOC with dual dies mode
+// sync with bigger value of mtime
+	spin_lock(&mtime_lock);
+	d0 = mt->time_rd((u64 *)((void *)mt->mtime_addr));
+	d1 = mt->time_rd((u64 *)((void *)mt->mtime_addr + 0x20000000));
+	if (d0 > d1) {
+		mt->time_wr(false, d0, (u64 *)((void *)mt->mtime_addr + 0x20000000));
+		val = d0;
+	} else if (d0 < d1) {
+		mt->time_wr(false, d1, (u64 *)((void *)mt->mtime_addr));
+		val = d1;
+	} else {
+		val = d0;
+	}
+	spin_unlock(&mtime_lock);
+	return val;
 }
 
 static void mtimer_event_stop(void)

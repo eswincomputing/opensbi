@@ -262,6 +262,15 @@ static void wake_coldboot_harts(struct sbi_scratch *scratch, u32 hartid)
 static unsigned long entry_count_offset;
 static unsigned long init_count_offset;
 
+static void sbi_boot_print_hardware_feature(void)
+{
+	sbi_printf("\n");
+	sbi_printf("Hardware Feature[7C1]: 0x%lx\n",csr_read(0x7c1));
+	sbi_printf("Hardware Feature[7C2]: 0x%lx\n",csr_read(0x7c2));
+	sbi_printf("Hardware Feature[7C3]: 0x%lx\n",csr_read(0x7c3));
+	sbi_printf("Hardware Feature[7C4]: 0x%lx\n",csr_read(0x7c4));
+}
+
 static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 {
 	int rc;
@@ -282,6 +291,17 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 	writel(fw_text_start_addr>>32, (void *)(0x71828000UL + 0x334));
 	writel(fw_text_start_addr&0xfffffffful, (void *)(0x71828000UL + 0x338));
 	writel(0xfffffffful, (void *)(0x71828000UL + 0x44c));  //release die1 u84
+
+	// sync mtime between die0 and die1
+	asm volatile("nop");
+	asm volatile("nop");
+	asm volatile("nop");
+	asm volatile("nop");
+	asm volatile("nop");
+	asm volatile("nop");
+	writel(0,(void *)(0x2000000 + 0xbff8));
+	writel(0,(void *)(0x2000000 + 0x20000000 + 0xbff8));
+
 #endif
 	/* Note: This has to be first thing in coldboot init sequence */
 	rc = sbi_scratch_init(scratch);
@@ -407,6 +427,8 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 	sbi_boot_print_domains(scratch);
 
 	sbi_boot_print_hart(scratch, hartid);
+
+	sbi_boot_print_hardware_feature();
 
 	wake_coldboot_harts(scratch, hartid);
 
