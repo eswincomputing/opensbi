@@ -419,6 +419,7 @@ void sbi_domain_dump(const struct sbi_domain *dom, const char *suffix)
 	u32 i, k;
 	unsigned long rstart, rend;
 	struct sbi_domain_memregion *reg;
+	unsigned long prot_out, addr_out, log2len;
 
 	sbi_printf("Domain%d Name        %s: %s\n",
 		   dom->index, suffix, dom->name);
@@ -443,8 +444,9 @@ void sbi_domain_dump(const struct sbi_domain *dom, const char *suffix)
 			rend = rstart + reg->tor - 1;
 		}
 
-		sbi_printf("Domain%d Region%02d    %s: 0x%" PRILX "-0x%" PRILX " ",
-			   dom->index, i, suffix, rstart, rend);
+		pmp_get(i, &prot_out, &addr_out, &log2len);
+		sbi_printf("Domain%d Region%02d    %s: 0x%" PRILX "-0x%" PRILX " ""(prot_out 0x%lx)",
+			   dom->index, i, suffix, rstart, rend, prot_out);
 
 		k = 0;
 
@@ -806,7 +808,10 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 /* msip + mtimecmp + mtime only for machine mode , if BR2_CHIPLET_2, config this when load npu driver */
 // TODO: npu driver load/unload trigger mspi and llc region re-config
 #if defined(BR2_CHIPLET_1_DIE0_AVAILABLE) && defined(BR2_CHIPLET_1)
-	sbi_domain_memregion_init(0x2000000UL, 0xbfffUL, SBI_DOMAIN_MEMREGION_MMIO,
+	sbi_domain_memregion_init(0x2000000UL, 0xbfffUL,
+				  (SBI_DOMAIN_MEMREGION_M_READABLE |
+				   SBI_DOMAIN_MEMREGION_M_WRITABLE |
+				   SBI_DOMAIN_MEMREGION_MMIO),
 				  &root_memregs[root_memregs_count++],0);
 #endif
 #if defined(BR2_CHIPLET_1_DIE1_AVAILABLE) && defined(BR2_CHIPLET_1)
@@ -842,35 +847,42 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 */
 
 #if defined(BR2_CHIPLET_1_DIE0_AVAILABLE) && defined(BR2_CHIPLET_1)
-#if ((ENABLE_VPU_SDK == 1) && (ENABLE_ECC == 1))
-	/* If enable DDR ECC, should reserve highest 2GB space for ecc within 16GB all size, start from 0x400000000UL */
-	sbi_domain_memregion_init(0x0UL, 0x400000000UL,
-				  (SBI_DOMAIN_MEMREGION_READABLE |
-				   SBI_DOMAIN_MEMREGION_WRITEABLE |
-				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
-				  &root_memregs[root_memregs_count++],
-				  0);
-#else
-	sbi_domain_memregion_init(0x0UL, 0x1000000000,
-				  (SBI_DOMAIN_MEMREGION_READABLE |
-				   SBI_DOMAIN_MEMREGION_WRITEABLE |
-				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
-				  &root_memregs[root_memregs_count++],
-				  0);
-#endif
-
-	sbi_domain_memregion_init(0x60000000UL, 0x20000000UL,
-				  SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS,
+	/* P550-MC internals memory sapce for Die0*/
+	sbi_domain_memregion_init(0x0UL, 0x20000000UL,
+				  (SBI_DOMAIN_MEMREGION_SU_RWX),
 				  &root_memregs[root_memregs_count++],
 				  0);
 
-	sbi_domain_memregion_init(0x8000000000UL, 0x2000000000UL,
+	/* register space for Die0 */
+	sbi_domain_memregion_init(0x40000000UL, 0x20000000UL,
 				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
 				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE),
 				  &root_memregs[root_memregs_count++],
 				  0);
 
-	sbi_domain_memregion_init(0xc000000000UL, 0x1000000000UL,
+	/* memory space Die0 on memory port.
+	   If enable DDR ECC, the tor value should be:  sizeof(actual DDR)  - 1/8 sizeof(actual DDR)
+	   1/8 sizeof(actual DDR) is reserved for DDR ECC
+	   Taking 16GB DDR as an example: tor = 16GB- 16GB*(1/8) = 14GB, i.e 0x380000000
+	*/
+#if ((ENABLE_VPU_SDK == 1) && (ENABLE_ECC == 1))
+	sbi_domain_memregion_init(0x80000000UL, 0x80000000UL,
+				  (SBI_DOMAIN_MEMREGION_READABLE |
+				   SBI_DOMAIN_MEMREGION_WRITEABLE |
+				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
+				  &root_memregs[root_memregs_count++],
+				  0x380000000UL);
+#else
+	sbi_domain_memregion_init(0x80000000UL, 0x80000000UL,
+				  (SBI_DOMAIN_MEMREGION_READABLE |
+				   SBI_DOMAIN_MEMREGION_WRITEABLE |
+				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
+				  &root_memregs[root_memregs_count++],
+				  0xf80000000UL);
+#endif
+
+	/*pcie space die0 */
+	sbi_domain_memregion_init(0x8000000000UL, 0x8000000000UL,
 				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
 				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE),
 				  &root_memregs[root_memregs_count++],
@@ -882,52 +894,51 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 	sbi_domain_memregion_init(0x3000000000UL, 0x3fffffUL, 0,
 				  &root_memregs[root_memregs_count++],0x5000000000UL);
 #elif defined(BR2_CHIPLET_2)
-	sbi_domain_memregion_init(0x0UL, 0x6000000000UL,
-				  (SBI_DOMAIN_MEMREGION_READABLE |
-				   SBI_DOMAIN_MEMREGION_WRITEABLE |
-				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
-				  &root_memregs[root_memregs_count++],
-				  0);
+	/* Die0 CLINT, R,W for M-mode only */
+	sbi_domain_memregion_init(0x2000000UL, 0xbfffUL,
+				  (SBI_DOMAIN_MEMREGION_M_READABLE |
+				   SBI_DOMAIN_MEMREGION_M_WRITABLE |
+				   SBI_DOMAIN_MEMREGION_MMIO),
+				  &root_memregs[root_memregs_count++],0);
 
-	/*reserved & llc0*/
-	sbi_domain_memregion_init(0x1000000000UL, 0x1000000000UL,
-				  SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS,
-				  &root_memregs[root_memregs_count++],
-				  0);
+	/* Die1 CLINT, R,W for M-mode only */
+	sbi_domain_memregion_init(0x22000000UL, 0xbfffUL,
+				  (SBI_DOMAIN_MEMREGION_M_READABLE |
+				   SBI_DOMAIN_MEMREGION_M_WRITABLE |
+				   SBI_DOMAIN_MEMREGION_MMIO),
+				  &root_memregs[root_memregs_count++],0);
 
-	/*reserved & llc1*/
-	sbi_domain_memregion_init(0x3000000000UL, 0x1000000000UL,
-				  SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS,
-				  &root_memregs[root_memregs_count++],
-				  0);
-
-	/*system port memory space space die0*/
-	sbi_domain_memregion_init(0xc000000000UL, 0x1000000000UL,
-				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
-				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE),
-				  &root_memregs[root_memregs_count++],
-				  0);
-
-	/*system port memory space space die1*/
-	sbi_domain_memregion_init(0xe000000000UL, 0x1000000000UL,
-				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
-				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE),
-				  &root_memregs[root_memregs_count++],
-				  0);
-
-	/*system port memory intreleaved space*/
-	sbi_domain_memregion_init(0x10000000000UL, 0x2000000000UL,
+	/* pheripheral register space for Die0 andd Die1 */
+	sbi_domain_memregion_init(0x40000000UL, 0x40000000UL,
 				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
 				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE |
-				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
-				  &root_memregs[root_memregs_count++],
+				   SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS),
+				   &root_memregs[root_memregs_count++],
+				  0);
+
+	sbi_domain_memregion_init(0x0UL, 0x1000000000UL,
+				  (SBI_DOMAIN_MEMREGION_SU_RWX),
+				   &root_memregs[root_memregs_count++],
+				  0);
+
+	sbi_domain_memregion_init(0x2000000000UL, 0x1000000000UL,
+				  (SBI_DOMAIN_MEMREGION_SU_RWX),
+				   &root_memregs[root_memregs_count++],
+				  0);
+
+	/*pcie space die0, die1*/
+	sbi_domain_memregion_init(0x8000000000UL, 0x8000000000UL,
+				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS),
+				   &root_memregs[root_memregs_count++],
 				  0);
 #endif
 #endif
-
 	/* Root domain disable everything memory region */
-	sbi_domain_memregion_init(0, ~0UL,
-				  SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS,
+	sbi_domain_memregion_init(0, (1UL<<42),
+				  (SBI_DOMAIN_MEMREGION_MMIO |
+				  SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS),
 				  &root_memregs[root_memregs_count++],
 				  0);
 
