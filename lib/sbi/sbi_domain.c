@@ -842,13 +842,22 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 */
 
 #if defined(BR2_CHIPLET_1_DIE0_AVAILABLE) && defined(BR2_CHIPLET_1)
+#if defined(BR2_PACKAGE_ES_VPU_SDK) && defined(BR2_PACKAGE_DDR_ENABLE_ECC)
 	/* If enable DDR ECC, should reserve highest 2GB space for ecc within 16GB all size, start from 0x400000000UL */
+	sbi_domain_memregion_init(0x0UL, 0x400000000UL,
+				  (SBI_DOMAIN_MEMREGION_READABLE |
+				   SBI_DOMAIN_MEMREGION_WRITEABLE |
+				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
+				  &root_memregs[root_memregs_count++],
+				  0);
+#else
 	sbi_domain_memregion_init(0x0UL, 0x1000000000,
 				  (SBI_DOMAIN_MEMREGION_READABLE |
 				   SBI_DOMAIN_MEMREGION_WRITEABLE |
 				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
 				  &root_memregs[root_memregs_count++],
 				  0);
+#endif
 
 	sbi_domain_memregion_init(0x60000000UL, 0x20000000UL,
 				  SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS,

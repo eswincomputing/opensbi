@@ -341,7 +341,7 @@ GENFLAGS	+=	$(libsbiutils-genflags-y)
 GENFLAGS	+=	$(platform-genflags-y)
 GENFLAGS	+=	$(firmware-genflags-y)
 
-CFLAGS		=	-g -Wall -Werror -ffreestanding -nostdlib -fno-stack-protector -fno-strict-aliasing -O2 -D$(chiplet) -D$(mem_mode) -D$(chiplet_die_available) -D$(platform_cluster_x_core)
+CFLAGS		=	-g -Wall -Werror -ffreestanding -nostdlib -fno-stack-protector -fno-strict-aliasing -O2 -D$(chiplet) -D$(mem_mode) -D$(chiplet_die_available) -D$(platform_cluster_x_core) -D$(ENABLE_VPU_SDK) -D$(ENABLE_ECC)
 ifneq ($(DEBUG),)
 CFLAGS		+=	-O0
 else
