@@ -23,6 +23,7 @@
 #include <sbi/sbi_string.h>
 #include <sbi/sbi_trap.h>
 #include <sbi/sbi_hfence.h>
+#include <sbi/riscv_io.h>
 
 extern void __sbi_expected_trap(void);
 extern void __sbi_expected_trap_hext(void);
@@ -420,6 +421,67 @@ int sbi_hart_pmp_configure(struct sbi_scratch *scratch)
 	}
 
 	return 0;
+}
+
+#ifndef BR2_CHIPLET_2
+static void init_bus_blocker(void)
+{
+#if (defined BR2_CHIPLET_1) && (defined BR2_CHIPLET_1_DIE0_AVAILABLE)
+	#define BLOCKER_TL64D2D_OUT	(void *)0x200000
+	#define BLOCKER_TL256D2D_OUT	(void *)0x202000
+	#define BLOCKER_TL256D2D_IN	(void *)0x204000
+#elif (defined BR2_CHIPLET_1) && (defined BR2_CHIPLET_1_DIE1_AVAILABLE)
+	#define BLOCKER_TL64D2D_OUT	(void *)(0x200000+0x20000000)
+	#define BLOCKER_TL256D2D_OUT	(void *)(0x202000+0x20000000)
+	#define BLOCKER_TL256D2D_IN	(void *)(0x204000+0x20000000)
+#endif
+	writel(1,BLOCKER_TL64D2D_OUT);
+	writel(1,BLOCKER_TL256D2D_OUT);
+	writel(1,BLOCKER_TL256D2D_IN);
+
+}
+#endif
+
+static void init_fcsr(void)
+{
+	unsigned long hwpf;
+
+	/* enable speculative icache refill */
+	hwpf = 0x4000UL;	// [14]	Disable Indirect-Jump Target Predictor
+	__asm__ volatile("csrw 0x7c1 , %0" : : "r"(hwpf));
+
+	hwpf = 0x80UL;	// [7]	Force Noisy Evict to send release message from any valid coherence permission state
+	__asm__ volatile("csrw 0x7c2 , %0" : : "r"(hwpf));
+
+	hwpf = 0x104095C1BE241UL;
+	__asm__ volatile("csrw 0x7c3 , %0" : : "r"(hwpf));
+
+	hwpf = 0x929FUL;
+	//cleanup fields
+	hwpf &= (~(0x1f << 5)); //[9:5]  cleanup  hitCacheThrdL2
+	hwpf &= (~(0x7  << 14)); //[16:14] cleanup numL2PFIssQEnt
+
+	//set new value
+	hwpf |= (0x1f << 5); //[9:5]    hitCacheThrdL2
+	hwpf |= (0x7  << 14); //[16:14] numL2PFIssQEnt
+	__asm__ volatile("csrw 0x7c4 , %0" : : "r"(hwpf));
+
+}
+
+
+void sbi_hart_blocker_fscr_configure(struct sbi_scratch *scratch)
+{
+	struct sbi_domain *dom = sbi_domain_thishart_ptr();
+
+	if (dom->boot_hartid == current_hartid()) {
+		#ifndef BR2_CHIPLET_2
+		/* if only one die, need config blocker to 
+		generate fake response when access remote target */
+		init_bus_blocker();
+		#endif
+	}
+
+	init_fcsr();
 }
 
 int sbi_hart_priv_version(struct sbi_scratch *scratch)

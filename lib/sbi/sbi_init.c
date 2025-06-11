@@ -399,6 +399,8 @@ static void __noreturn init_coldboot(struct sbi_scratch *scratch, u32 hartid)
 		sbi_hart_hang();
 	}
 
+	sbi_hart_blocker_fscr_configure(scratch);
+
 	/*
 	 * Note: Platform final initialization should be after finalizing
 	 * domains so that it sees correct domain assignment and PMP
@@ -487,6 +489,8 @@ static void __noreturn init_warm_startup(struct sbi_scratch *scratch,
 	if (rc)
 		sbi_hart_hang();
 
+	sbi_hart_blocker_fscr_configure(scratch);
+
 	rc = sbi_platform_final_init(plat, false);
 	if (rc)
 		sbi_hart_hang();
@@ -511,6 +515,8 @@ static void __noreturn init_warm_resume(struct sbi_scratch *scratch,
 	rc = sbi_hart_pmp_configure(scratch);
 	if (rc)
 		sbi_hart_hang();
+
+	sbi_hart_blocker_fscr_configure(scratch);
 
 	sbi_hsm_hart_resume_finish(scratch, hartid);
 }
