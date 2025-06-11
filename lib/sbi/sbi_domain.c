@@ -842,7 +842,7 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 */
 
 #if defined(BR2_CHIPLET_1_DIE0_AVAILABLE) && defined(BR2_CHIPLET_1)
-#if defined(BR2_PACKAGE_ES_VPU_SDK) && defined(BR2_PACKAGE_DDR_ENABLE_ECC)
+#if ((ENABLE_VPU_SDK == 1) && (ENABLE_ECC == 1))
 	/* If enable DDR ECC, should reserve highest 2GB space for ecc within 16GB all size, start from 0x400000000UL */
 	sbi_domain_memregion_init(0x0UL, 0x400000000UL,
 				  (SBI_DOMAIN_MEMREGION_READABLE |
