@@ -894,6 +894,48 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 	sbi_domain_memregion_init(0x3000000000UL, 0x3fffffUL, 0,
 				  &root_memregs[root_memregs_count++],0x5000000000UL);
 #elif defined(BR2_CHIPLET_2)
+#if defined(BR2_MEMMODE_INTERLEAVE)
+	sbi_domain_memregion_init(0x0UL, 0x6000000000UL,
+				  (SBI_DOMAIN_MEMREGION_READABLE |
+				   SBI_DOMAIN_MEMREGION_WRITEABLE |
+				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
+				  &root_memregs[root_memregs_count++],
+				  0);
+
+	/*reserved & llc0*/
+	sbi_domain_memregion_init(0x1000000000UL, 0x1000000000UL,
+				  SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS,
+				  &root_memregs[root_memregs_count++],
+				  0);
+
+	/*reserved & llc1*/
+	sbi_domain_memregion_init(0x3000000000UL, 0x1000000000UL,
+				  SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS,
+				  &root_memregs[root_memregs_count++],
+				  0);
+
+	/*system port memory space space die0*/
+	sbi_domain_memregion_init(0xc000000000UL, 0x1000000000UL,
+				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE),
+				  &root_memregs[root_memregs_count++],
+				  0);
+
+	/*system port memory space space die1*/
+	sbi_domain_memregion_init(0xe000000000UL, 0x1000000000UL,
+				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE),
+				  &root_memregs[root_memregs_count++],
+				  0);
+
+	/*system port memory intreleaved space*/
+	sbi_domain_memregion_init(0x10000000000UL, 0x2000000000UL,
+				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE |
+				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
+				  &root_memregs[root_memregs_count++],
+				  0);
+#else
 	/* Die0 CLINT, R,W for M-mode only */
 	sbi_domain_memregion_init(0x2000000UL, 0xbfffUL,
 				  (SBI_DOMAIN_MEMREGION_M_READABLE |
@@ -933,6 +975,7 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 				   SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS),
 				   &root_memregs[root_memregs_count++],
 				  0);
+#endif
 #endif
 #endif
 	/* Root domain disable everything memory region */
