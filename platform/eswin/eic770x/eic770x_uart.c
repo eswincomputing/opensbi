@@ -147,6 +147,17 @@ static void generate_checksum(Message *msg)
 	msg->checksum = checksum;
 }
 
+static void eic770x_uart8250_flush(void)
+{
+	/* Wait until the transmit FIFO is empty */
+	while ((eic770x_get_reg(EIC770X_UART_LSR_OFFSET) & EIC770X_UART_LSR_THRE) == 0)
+		;
+
+	/* Wait until the shift register has finished transmitting the last bit */
+	while ((eic770x_get_reg(EIC770X_UART_LSR_OFFSET) & EIC770X_UART_LSR_TEMT) == 0)
+		;
+}
+
 int eic770x_uart2_init();
 int eic770x_uart2_suspend();
 int transmit_message(Message *msg)
@@ -155,6 +166,7 @@ int transmit_message(Message *msg)
 	generate_checksum(msg);
 
 	eic770x_uart_snd((char *)msg, sizeof(Message));
+	eic770x_uart8250_flush();
 	eic770x_uart2_suspend();
 	return 0;
 }
