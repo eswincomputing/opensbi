@@ -936,6 +936,8 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 				  &root_memregs[root_memregs_count++],
 				  0);
 #else
+#if (ENABLE_ECC == 0)
+
 	/* Die0 CLINT, R,W for M-mode only */
 	sbi_domain_memregion_init(0x2000000UL, 0xbfffUL,
 				  (SBI_DOMAIN_MEMREGION_M_READABLE |
@@ -975,9 +977,36 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 				   SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS),
 				   &root_memregs[root_memregs_count++],
 				  0);
-#endif
-#endif
-#endif
+#else
+	/* pheripheral register space for Die0 andd Die1 */
+	sbi_domain_memregion_init(0x40000000UL, 0x40000000UL,
+				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS),
+				   &root_memregs[root_memregs_count++],
+				  0);
+
+	sbi_domain_memregion_init(0x0UL, 0x1000000000UL,
+				  (SBI_DOMAIN_MEMREGION_SU_RWX),
+				   &root_memregs[root_memregs_count++],
+				   0x400000000UL);
+
+	sbi_domain_memregion_init(0x2000000000UL, 0x2000000000UL,
+				  (SBI_DOMAIN_MEMREGION_SU_RWX),
+				   &root_memregs[root_memregs_count++],
+				   0x380000000UL);
+
+	/*pcie space die0, die1*/
+	sbi_domain_memregion_init(0x8000000000UL, 0x8000000000UL,
+				  (SBI_DOMAIN_MEMREGION_ENF_READABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_WRITABLE |
+				   SBI_DOMAIN_MEMREGION_ENF_PERMISSIONS),
+				   &root_memregs[root_memregs_count++],
+				  0);
+#endif // end of #if (ENABLE_ECC == 0)
+#endif // end of #if defined(BR2_MEMMODE_INTERLEAVE)
+#endif // end of defined(BR2_CHIPLET_2)
+#endif // end of #ifdef HOLE_REGION
 	/* Root domain disable everything memory region */
 	sbi_domain_memregion_init(0, (1UL<<42),
 				  (SBI_DOMAIN_MEMREGION_MMIO |
