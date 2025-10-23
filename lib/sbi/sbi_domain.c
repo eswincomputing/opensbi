@@ -17,6 +17,7 @@
 #include <sbi/sbi_platform.h>
 #include <sbi/sbi_scratch.h>
 #include <sbi/sbi_string.h>
+#include <eswin/eic770x_dram.h>
 
 /*
  * We allocate an extra element because sbi_domain_for_each() expects
@@ -747,6 +748,10 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 	struct sbi_hartmask *root_hmask;
 	struct sbi_domain_memregion *root_memregs;
 	const struct sbi_platform *plat = sbi_platform_ptr(scratch);
+	struct bd_info bd;
+
+	/* get dram size */
+	get_dram_info(&bd);
 
 	if (scratch->fw_rw_offset == 0 ||
 	    (scratch->fw_rw_offset & (scratch->fw_rw_offset - 1)) != 0) {
@@ -865,13 +870,14 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 	   1/8 sizeof(actual DDR) is reserved for DDR ECC
 	   Taking 16GB DDR as an example: tor = 16GB- 16GB*(1/8) = 14GB, i.e 0x380000000
 	*/
-#if ((ENABLE_VPU_SDK == 1) && (ENABLE_ECC == 1))
+#if (ENABLE_ECC == 1)
+	unsigned long dram_size_available = bd.bi_dram[0].size - (bd.bi_dram[0].size / 8);
 	sbi_domain_memregion_init(0x80000000UL, 0x80000000UL,
 				  (SBI_DOMAIN_MEMREGION_READABLE |
 				   SBI_DOMAIN_MEMREGION_WRITEABLE |
 				   SBI_DOMAIN_MEMREGION_EXECUTABLE),
 				  &root_memregs[root_memregs_count++],
-				  0x380000000UL);
+				  dram_size_available);
 #else
 	sbi_domain_memregion_init(0x80000000UL, 0x80000000UL,
 				  (SBI_DOMAIN_MEMREGION_READABLE |
@@ -986,15 +992,16 @@ int sbi_domain_init(struct sbi_scratch *scratch, u32 cold_hartid)
 				   &root_memregs[root_memregs_count++],
 				  0);
 
+	unsigned long dram_size_available = bd.bi_dram[0].size - (bd.bi_dram[0].size / 8);
 	sbi_domain_memregion_init(0x0UL, 0x1000000000UL,
 				  (SBI_DOMAIN_MEMREGION_SU_RWX),
 				   &root_memregs[root_memregs_count++],
-				   0x400000000UL);
+				   (dram_size_available + 0x80000000));
 
 	sbi_domain_memregion_init(0x2000000000UL, 0x2000000000UL,
 				  (SBI_DOMAIN_MEMREGION_SU_RWX),
 				   &root_memregs[root_memregs_count++],
-				   0x380000000UL);
+				   dram_size_available);
 
 	/*pcie space die0, die1*/
 	sbi_domain_memregion_init(0x8000000000UL, 0x8000000000UL,

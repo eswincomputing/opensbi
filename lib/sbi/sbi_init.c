@@ -80,6 +80,9 @@ static void sbi_boot_print_general(struct sbi_scratch *scratch)
 		return;
 
 	/* Platform details */
+	sbi_printf("Platform Version          : %d.%d\n",
+		   SBI_PLATFORM_VERSION_MAJOR(sbi_platform_version(plat)),
+		   SBI_PLATFORM_VERSION_MINOR(sbi_platform_version(plat)));
 	sbi_printf("Platform Name             : %s\n",
 		   sbi_platform_name(plat));
 	sbi_platform_get_features_str(plat, str, sizeof(str));

@@ -17,6 +17,9 @@
  */
 #define SBI_PLATFORM_VERSION(Major, Minor) ((Major << 16) | Minor)
 
+#define SBI_PLATFORM_VERSION_MAJOR(Ver)	((Ver >> 16) & 0xffff)
+#define SBI_PLATFORM_VERSION_MINOR(Ver)	(Ver & 0xffff)
+
 /** Offset of opensbi_version in struct sbi_platform */
 #define SBI_PLATFORM_OPENSBI_VERSION_OFFSET (0x00)
 /** Offset of platform_version in struct sbi_platform */
@@ -689,6 +692,20 @@ static inline int sbi_platform_vendor_ext_provider(
 	}
 
 	return SBI_ENOTSUPP;
+}
+
+/**
+ * Get platform version released by vendor.
+ *
+ * @param plat pointer to struct sbi_platform
+ *
+ * @return value of the platform version
+ */
+static inline u32 sbi_platform_version(const struct sbi_platform *plat)
+{
+	if (plat)
+		return plat->platform_version;
+	return 0;
 }
 
 #endif
