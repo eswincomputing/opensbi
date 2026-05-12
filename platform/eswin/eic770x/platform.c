@@ -29,6 +29,7 @@
 #include <sbi_utils/fdt/fdt_fixup.h>
 #include <sbi/sbi_hart.h>
 #include "eic770x_uart.h"
+#include "eic770x_mailbox.h"
 
 /* clang-format off */
 #ifdef BR2_CHIPLET_1
@@ -56,7 +57,7 @@
 #define EIC770X_UART0_ADDR				(0x50900000UL + DIE_REG_OFFSET)
 #define EIC770X_UART2_ADDR				(0x50920000UL + DIE_REG_OFFSET)
 #define EIC770X_UART_RESET_ADDR			(0x51828434UL + DIE_REG_OFFSET)
-#define EIC770X_UART_LSPCLK_ADDR		(0x51828200UL + DIE_REG_OFFSET)
+#define EIC770X_UART_LSPCLK_ADDR			(0x51828200UL + DIE_REG_OFFSET)
 
 #define EIC770X_UART_BAUDRATE			115200
 
@@ -68,6 +69,11 @@
 /* system reset register */
 #define EIC770X_SYS_RESET_ADDR	0x51828300UL
 #define EIC770X_SYS_RESET_VALUE	0x1ac0ffe6
+
+/* lpcpu mailbox2 */
+#define EIC770X_LPCPU_MAILBOX_BASE_DIE0		0x50a20000UL
+#define EIC770X_LPCPU_MAILBOX_BASE_DIE1		(EIC770X_LPCPU_MAILBOX_BASE_DIE0 + 0x20000000)
+#define EIC770X_LPCPU_PM_SHUTDOWN_CMD		0x6F6666
 
 /* clang-format on */
 
@@ -170,6 +176,42 @@ static int eic770x_system_reset_check(u32 type, u32 reason)
 	return 0;
 }
 
+static int lpcpu_mailbox2_send_pm_shutdown(unsigned long lpcpu_base)
+{
+	eswin_mailbox_reg_t *mbox_reg;
+	eswin_mbox_msg_t msg;
+	u64 msg_data;
+
+	if (!lpcpu_base)
+		return -1;
+
+	mbox_reg = (eswin_mailbox_reg_t *)lpcpu_base;
+	msg_data = EIC770X_LPCPU_PM_SHUTDOWN_CMD;
+
+	eswin_mailbox_add_data(&msg, (u8 *)&msg_data, 8);
+	eswin_mailbox_send_irq(mbox_reg, &msg, ESWIN_MAIBOX_LPCPU_IRQ_BIT);
+
+	return 0;
+}
+
+static void lpcpu_notify_pm_shutdown()
+{
+#ifdef BR2_CHIPLET_1
+#ifdef BR2_CHIPLET_1_DIE0_AVAILABLE
+	lpcpu_mailbox2_send_pm_shutdown(EIC770X_LPCPU_MAILBOX_BASE_DIE0);
+	sbi_printf("Send PM_SHUTDOWN message to die0 lpcpu\n");
+#else
+	lpcpu_mailbox2_send_pm_shutdown(EIC770X_LPCPU_MAILBOX_BASE_DIE1);
+	sbi_printf("Send PM_SHUTDOWN message to die1 lpcpu\n");
+#endif
+#else // BR2_CHIPLET_2
+	lpcpu_mailbox2_send_pm_shutdown(EIC770X_LPCPU_MAILBOX_BASE_DIE0);
+	lpcpu_mailbox2_send_pm_shutdown(EIC770X_LPCPU_MAILBOX_BASE_DIE1);
+	sbi_printf("Send PM_SHUTDOWN message to die0 and die1 lpcpu\n");
+#endif
+	return;
+}
+
 /* tell stm32 on the carrier to shut down the power */
 static int eic770x_core_shutdown(void)
 {
@@ -181,7 +223,10 @@ static int eic770x_core_shutdown(void)
 		.tail = FRAME_TAIL,
 	};
 	sbi_printf("%s\n", __func__);
+
 	transmit_message(&shutdown_reply);
+	sbi_timer_mdelay(3000);
+	lpcpu_notify_pm_shutdown();
 	return 0;
 }
 

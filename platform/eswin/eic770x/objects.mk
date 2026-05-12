@@ -12,3 +12,4 @@
 platform-objs-y += platform.o
 platform-objs-y += eic770x_uart.o
 platform-objs-y += eic770x_dram.o
+platform-objs-y += eic770x_mailbox.o
