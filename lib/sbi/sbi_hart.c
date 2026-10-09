@@ -447,7 +447,7 @@ static void init_fcsr(void)
 	unsigned long hwpf;
 
 	/* enable speculative icache refill */
-	hwpf = 0x4000UL;	// [14]	Disable Indirect-Jump Target Predictor
+	hwpf = 0xC000UL;	// [14]	Disable Indirect-Jump Target Predictor,[15] Disables next-line predictor
 	__asm__ volatile("csrw 0x7c1 , %0" : : "r"(hwpf));
 
 	hwpf = 0x80UL;	// [7]	Force Noisy Evict to send release message from any valid coherence permission state
