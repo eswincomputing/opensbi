@@ -28,6 +28,8 @@
 #include <sbi/riscv_asm.h>
 #include <sbi_utils/fdt/fdt_fixup.h>
 #include <sbi/sbi_hart.h>
+#include <sbi/sbi_hsm.h>
+#include <sbi/sbi_ipi.h>
 #include "eic770x_uart.h"
 #include "eic770x_mailbox.h"
 
@@ -70,12 +72,23 @@
 #define EIC770X_SYS_RESET_ADDR	0x51828300UL
 #define EIC770X_SYS_RESET_VALUE	0x1ac0ffe6
 
+/* MCPU status registers for CEASE detection (sysport base = 0x40000000) */
+#define EIC770X_SYSPORT_BASE(d)		(0x40000000UL + (d) * 0x20000000UL)
+#define EIC770X_SYSCON(d)		(EIC770X_SYSPORT_BASE(d) + 0x11810000UL)
+#define EIC770X_MCPU_STATUS(d)		((volatile u32 *)(EIC770X_SYSCON(d) + 0x608UL))
+#define EIC770X_MC_CEASE_BIT(c)		(1UL << (15 - (c)))
+
+/* FEAT0 CSR: bit 0 = disableDCacheClockGate, must be cleared before CEASE */
+#define EIC770X_CSR_FEAT0		0x7c1
+
 /* lpcpu mailbox2 */
 #define EIC770X_LPCPU_MAILBOX_BASE_DIE0		0x50a20000UL
 #define EIC770X_LPCPU_MAILBOX_BASE_DIE1		(EIC770X_LPCPU_MAILBOX_BASE_DIE0 + 0x20000000)
 #define EIC770X_LPCPU_PM_SHUTDOWN_CMD		0x6F6666
 
 /* clang-format on */
+
+static volatile bool eic770x_power_down = false;
 
 static struct plic_data plic = {
 	.addr = EIC770X_PLIC_ADDR,
@@ -164,6 +177,93 @@ static void eic770x_modify_dt(void *fdt)
 	/*当需要在resever memory中使能CMA内存时，需要关闭该函数的调用*/
 	/*fdt_reserved_memory_nomap_fixup(fdt);*/
 }
+/*
+ * Wakes a halted hart out of WFI in sbi_hsm_hart_wait so it can CEASE.
+ * saddr is ignored: eic770x_hart_stop returns SBI_ENOTSUPP during normal
+ * operation, so the hart loops back into sbi_hsm_hart_wait.
+ */
+static int eic770x_hart_start(u32 hartid, ulong saddr)
+{
+	return sbi_ipi_raw_send(hartid);
+}
+
+static int eic770x_hart_stop(void)
+{
+	/*
+	 * Fence to ensure all prior IPI clears are visible before reading
+	 * eic770x_power_down, preventing a missed wake-up.
+	 */
+	asm volatile("fence o, r");
+
+	if (!eic770x_power_down)
+		return SBI_ENOTSUPP;
+
+	/*
+	 * Clear disableDCacheClockGate (bit 0 of FEAT0) before CEASE.
+	 * If the hart never went through an HSM start/stop cycle, FEAT0
+	 * holds the SoC reset value with this bit set, which prevents
+	 * the hart's ceased status from being reflected in MCPU_STATUS.
+	 */
+	csr_clear(EIC770X_CSR_FEAT0, 0x1);
+
+	/* CEASE instruction: park this hart permanently */
+	asm volatile(".word 0x30500073" ::: "memory");
+
+	/* Not reached */
+	while (1)
+		wfi();
+}
+
+/*
+ * Before resetting the SoC, designate the calling hart as primary and
+ * CEASE all other active harts. Waits for each die's MCPU_STATUS to
+ * confirm all targeted harts have ceased before the caller resets.
+ *
+ * This avoids the memory corruption observed when the Core Complex is
+ * reset while secondary harts are still actively executing.
+ */
+void eic770x_cease_other_harts(void)
+{
+	u32 to_cease[2] = {0, 0};
+	u32 cur_hartid = current_hartid();
+
+	eic770x_power_down = true;
+
+	for (u32 i = 0; i < EIC770X_HART_COUNT; i++) {
+		u32 hartid = eic770x_hart_index2id[i];
+		if (hartid == (u32)-1 || hartid == cur_hartid)
+			continue;
+		/*
+		 * Wake the hart from WFI in sbi_hsm_hart_wait.
+		 * The hart can't miss this IPI: if it entered wfi() it
+		 * hadn't yet observed eic770x_power_down=true, so it also
+		 * hasn't seen the IPI (given the wmb in sbi_ipi_raw_send).
+		 * The fence above ensures the IPI clear can't be reordered
+		 * past the eic770x_power_down read in eic770x_hart_stop.
+		 */
+		sbi_ipi_raw_send(hartid);
+		to_cease[hartid / 4] |= EIC770X_MC_CEASE_BIT(hartid % 4);
+	}
+
+	for (u32 die = 0; die < 2; die++) {
+		if (!to_cease[die])
+			continue;
+		/*
+		 * Poll mcput_cease_from_tile_x bits; once set they stay
+		 * high until the next reset.
+		 */
+		while ((readl(EIC770X_MCPU_STATUS(die)) & to_cease[die])
+		       != to_cease[die])
+			;
+	}
+}
+
+static const struct sbi_hsm_device eswin_eic770x_hsm = {
+	.name       = "eic770x_hsm",
+	.hart_start = eic770x_hart_start,
+	.hart_stop  = eic770x_hart_stop,
+};
+
 static int eic770x_system_reset_check(u32 type, u32 reason)
 {
 	switch (type) {
@@ -249,9 +349,11 @@ static int eic770x_cold_reset(void)
 
 static int eic770x_core_reset(void)
 {
-	sbi_printf("%s\n", __func__);
+	eic770x_cease_other_harts();
 	writel(EIC770X_SYS_RESET_VALUE, (volatile void *)EIC770X_SYS_RESET_ADDR);
-	return 0;
+	/* CEASE this hart after triggering reset */
+	asm volatile(".word 0x30500073" ::: "memory");
+	__builtin_unreachable();
 }
 
 static void eic770x_system_reset(u32 type, u32 reason)
@@ -368,6 +470,8 @@ static int eic770x_final_init(bool cold_boot)
 
 	if (!cold_boot)
 		return 0;
+
+	sbi_hsm_set_device(&eswin_eic770x_hsm);
 
 	fdt = sbi_scratch_thishart_arg1_ptr();
 	eic770x_modify_dt(fdt);
